@@ -45,40 +45,81 @@ def hash_string(s):
     h = hashlib.md5(s.encode()).hexdigest()
     return int(h, 16)
 
-def generate_png(stacks, title='CPU Flame Graph'):
+def generate_png(stacks, title='CPU Flame Graph', min_pct=0.5):
     """Generate PNG using PIL if available"""
     try:
-        from PIL import Image, ImageDraw
-        return _generate_png_pil(stacks, title)
+        from PIL import Image, ImageDraw, ImageFont
+        return _generate_png_pil(stacks, title, min_pct)
     except ImportError:
         return _generate_png_fallback(stacks, title)
 
-def _generate_png_pil(stacks, title):
-    from PIL import Image, ImageDraw
-    
-    width, height = 1400, min(3000, len(stacks) * 18 + 120)
-    img = Image.new('RGB', (width, height), color='white')
-    draw = ImageDraw.Draw(img)
-    
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
-              '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B88B', '#A9DFBF']
-    color_tuples = [tuple(int(c.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) for c in colors]
-    
-    draw.text((20, 20), title, fill=(0, 0, 0))
+def _generate_png_pil(stacks, title, min_pct=0.5):
+    from PIL import Image, ImageDraw, ImageFont
     
     total = sum(stacks.values())
-    y = 100
     
-    for stack, count in sorted(stacks.items(), key=lambda x: -x[1])[:200]:
-        w = (count / total) * (width - 40)
+    # Filter stacks: only keep those above minimum percentage threshold
+    filtered_stacks = {k: v for k, v in stacks.items() 
+                       if (v / total) * 100 >= min_pct}
+    
+    # Sort by count descending and limit to top 50 for readability
+    sorted_stacks = sorted(filtered_stacks.items(), key=lambda x: -x[1])[:50]
+    
+    # Layout parameters - larger for better readability
+    bar_height = 28
+    bar_spacing = 32
+    margin = 30
+    header_height = 80
+    
+    width = 1600
+    height = header_height + len(sorted_stacks) * bar_spacing + margin
+    
+    img = Image.new('RGB', (width, height), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    
+    colors = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6',
+              '#1ABC9C', '#E67E22', '#34495E', '#16A085', '#C0392B']
+    color_tuples = [tuple(int(c.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) for c in colors]
+    
+    # Try to load a larger font, fall back to default
+    try:
+        title_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 24)
+        label_font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 14)
+    except (OSError, IOError):
+        try:
+            title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+            label_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+        except (OSError, IOError):
+            title_font = ImageFont.load_default()
+            label_font = ImageFont.load_default()
+    
+    # Draw title
+    draw.text((margin, 20), title, fill=(0, 0, 0), font=title_font)
+    draw.text((margin, 50), f"Showing top {len(sorted_stacks)} stacks (>= {min_pct}% of samples)", 
+              fill=(100, 100, 100), font=label_font)
+    
+    y = header_height
+    
+    for stack, count in sorted_stacks:
+        pct = (count / total) * 100
+        w = (count / total) * (width - 2 * margin - 120)  # Leave space for percentage
         func = stack.split(';')[-1]
         color = color_tuples[hash_string(func) % len(color_tuples)]
-        draw.rectangle([20, y, 20+w, y+16], fill=color, outline=(255, 255, 255))
-        if w > 40:
-            draw.text((24, y+2), func[:35], fill=(255, 255, 255))
-        y += 18
-        if y > height - 20:
-            break
+        
+        # Draw bar
+        draw.rectangle([margin, y, margin + w, y + bar_height], 
+                       fill=color, outline=(255, 255, 255))
+        
+        # Draw function name inside bar if it fits
+        label = func[:50]  # Show more characters
+        if w > 100:
+            draw.text((margin + 8, y + 6), label, fill=(255, 255, 255), font=label_font)
+        
+        # Draw percentage on the right side
+        pct_text = f"{pct:.1f}% ({count})"
+        draw.text((width - margin - 100, y + 6), pct_text, fill=(60, 60, 60), font=label_font)
+        
+        y += bar_spacing
     
     b = io.BytesIO()
     img.save(b, format='PNG')
@@ -98,49 +139,78 @@ def _generate_png_fallback(stacks, title):
     iend_chunk = struct.pack('>I', 0) + b'IEND' + struct.pack('>I', iend_crc)
     return png_header + ihdr_chunk + idat_chunk + iend_chunk
 
-def generate_svg(stacks, title='CPU Flame Graph'):
+def generate_svg(stacks, title='CPU Flame Graph', min_pct=0.5):
     """Generate SVG"""
-    width, height = 1200, min(2000, len(stacks) * 15 + 100)
     total = sum(stacks.values())
+    
+    # Filter stacks: only keep those above minimum percentage threshold
+    filtered_stacks = {k: v for k, v in stacks.items() 
+                       if (v / total) * 100 >= min_pct}
+    
+    # Sort by count descending and limit to top 50 for readability
+    sorted_stacks = sorted(filtered_stacks.items(), key=lambda x: -x[1])[:50]
+    
+    # Layout parameters
+    bar_height = 24
+    bar_spacing = 28
+    margin = 30
+    header_height = 90
+    
+    width = 1400
+    height = header_height + len(sorted_stacks) * bar_spacing + margin
+    
+    colors = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6',
+              '#1ABC9C', '#E67E22', '#34495E', '#16A085', '#C0392B']
     
     svg = '<?xml version="1.0" encoding="UTF-8"?>\n'
     svg += f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">\n'
+    svg += '<style>text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }</style>\n'
     svg += f'<rect width="{width}" height="{height}" fill="white"/>\n'
-    svg += f'<text x="20" y="40" font-size="20" font-weight="bold">{title}</text>\n'
+    svg += f'<text x="{margin}" y="35" font-size="22" font-weight="bold">{title}</text>\n'
+    svg += f'<text x="{margin}" y="60" font-size="13" fill="#666">Showing top {len(sorted_stacks)} stacks (>= {min_pct}% of samples)</text>\n'
     
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
-              '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B88B', '#A9DFBF']
-    
-    y = 80
-    for stack, count in sorted(stacks.items(), key=lambda x: -x[1])[:500]:
-        w = (count / total) * (width - 40)
+    y = header_height
+    for stack, count in sorted_stacks:
+        pct = (count / total) * 100
+        w = (count / total) * (width - 2 * margin - 120)  # Leave space for percentage
         func = stack.split(';')[-1]
         color = colors[hash_string(func) % len(colors)]
-        pct = (count / total) * 100
-        svg += f'<rect x="20" y="{y}" width="{w}" height="14" fill="{color}" stroke="white"/>\n'
-        if w > 30:
-            svg += f'<text x="24" y="{y+10}" fill="white" font-size="11">{func[:20]}</text>\n'
-        y += 15
-        if y > height - 20:
-            break
+        
+        # Draw bar
+        svg += f'<rect x="{margin}" y="{y}" width="{w}" height="{bar_height}" fill="{color}" rx="3"/>\n'
+        
+        # Draw function name inside bar if it fits
+        if w > 80:
+            label = func[:60]  # Show more characters
+            svg += f'<text x="{margin + 8}" y="{y + 16}" fill="white" font-size="13">{label}</text>\n'
+        
+        # Draw percentage on the right side
+        pct_text = f"{pct:.1f}% ({count})"
+        svg += f'<text x="{width - margin - 90}" y="{y + 16}" fill="#444" font-size="12">{pct_text}</text>\n'
+        
+        y += bar_spacing
     
     svg += '</svg>'
     return svg
 
 def main():
     parser = argparse.ArgumentParser(description='Perf to Flamegraph')
-    parser.add_argument('--format', choices=['png', 'svg'], default='png')
-    parser.add_argument('--title', default='CPU Flame Graph')
+    parser.add_argument('--format', choices=['png', 'svg'], default='png',
+                        help='Output format (default: png)')
+    parser.add_argument('--title', default='CPU Flame Graph',
+                        help='Title for the flamegraph')
+    parser.add_argument('--min-pct', type=float, default=0.5,
+                        help='Minimum percentage threshold to include a stack (default: 0.5)')
     args = parser.parse_args()
     
     data = sys.stdin.read()
     stacks = collapse_perf_stacks(data)
     
     if args.format == 'png':
-        output = generate_png(stacks, args.title)
+        output = generate_png(stacks, args.title, args.min_pct)
         sys.stdout.buffer.write(output)
     else:
-        output = generate_svg(stacks, args.title)
+        output = generate_svg(stacks, args.title, args.min_pct)
         print(output)
 
 if __name__ == '__main__':
