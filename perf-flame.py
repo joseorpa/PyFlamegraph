@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-perf-flame.py - All-in-one script con soporte PNG y SVG
-Uso: perf script | python3 perf-flame.py --format png > output.png
-     perf script | python3 perf-flame.py --format svg > output.svg
+perf-flame.py - All-in-one script with PNG and SVG support
+Usage: perf script | python3 perf-flame.py --format png > output.png
+       perf script | python3 perf-flame.py --format svg > output.svg
 """
 import sys
 import re
@@ -13,7 +13,7 @@ import struct
 import zlib
 
 def collapse_perf_stacks(input_data):
-    """Colapsar stacks idénticos"""
+    """Collapse identical stacks"""
     stacks = {}
     lines = input_data.strip().split('\n')
     current_stack = []
@@ -46,7 +46,7 @@ def hash_string(s):
     return int(h, 16)
 
 def generate_png(stacks, title='CPU Flame Graph'):
-    """Generar PNG usando PIL si está disponible"""
+    """Generate PNG using PIL if available"""
     try:
         from PIL import Image, ImageDraw
         return _generate_png_pil(stacks, title)
@@ -99,7 +99,7 @@ def _generate_png_fallback(stacks, title):
     return png_header + ihdr_chunk + idat_chunk + iend_chunk
 
 def generate_svg(stacks, title='CPU Flame Graph'):
-    """Generar SVG"""
+    """Generate SVG"""
     width, height = 1200, min(2000, len(stacks) * 15 + 100)
     total = sum(stacks.values())
     

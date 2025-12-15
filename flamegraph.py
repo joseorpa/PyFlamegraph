@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-flamegraph.py - Reemplazo de flamegraph.pl en Python
-Genera PNG a partir de stacks colapsados
+flamegraph.py - Python replacement for flamegraph.pl
+Generates PNG from collapsed stacks
 """
 import sys
 import hashlib

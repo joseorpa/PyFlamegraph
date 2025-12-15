@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-stackcollapse_perf.py - Reemplazo de stackcollapse-perf.pl en Python
-Procesa salida de 'perf script' y colapsa stacks similares
+stackcollapse_perf.py - Python replacement for stackcollapse-perf.pl
+Processes 'perf script' output and collapses similar stacks
 """
 import sys
 import re
